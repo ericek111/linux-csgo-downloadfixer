@@ -142,12 +142,11 @@ int run(int argc, char* argv[]) {
             std::string downloadDir = saveURL.substr(0, saveURL.find_last_of("/\\"));
 
             cout << "#" << std::dec << i << " / " << " Downloading " << downloadURL << " to " << saveURL << endl;
-            const char* mkcmd = (std::string("mkdir -p '") + downloadDir + "'").c_str();
-            cout << mkcmd << endl;
+            string mkstr = (string("mkdir -p '") + string(downloadDir) + string("'"));
+            const char* mkcmd = mkstr.c_str();
 
             // might as well do it the ghetto way - we're on Linux, so this is available
             system(mkcmd);
-
             fp = fopen(saveURL.c_str(), "wb");
             if(fp == NULL) {
                 cout << "Failed to fopen " << saveURL << endl;

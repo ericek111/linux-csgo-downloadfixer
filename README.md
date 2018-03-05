@@ -25,6 +25,7 @@ You must run this as root!
 cd [install dir]
 sudo ./csgo_downloadfixer
 ```
+To **update**, just run `git pull` and compile again.
 
 You can also prevent the program from writing to CS:GO's memory. This will make the very very very slim (we're talking almost non-existent) chance of getting VAC banned none.
 Just pass `-nowrite` as a CLI argument.
