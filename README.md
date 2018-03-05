@@ -1,13 +1,14 @@
 # CS:GO Download Fixer
 
 Allows you to download resources (maps, sounds and textures) from community servers without hassle.
+Workaround for [issue #11](https://github.com/ValveSoftware/csgo-osx-linux/issues/11) from September 2014.
 
 ### How to use:
 #### Dependencies:
 ```
 sudo apt-get update
 sudo apt-get upgrade
-sudo apt-get install make cmake gcc git
+sudo apt-get install make cmake gcc git libcurl-dev
 ```
 
 #### Compile:
@@ -25,10 +26,5 @@ cd [install dir]
 sudo ./csgo_downloadfixer
 ```
 
-You can create a launcher, but you still need to log in as root.  
-Use either `gksu [install dir]/csgo_downloadfixer`, or make a simple bash script, so you won't have to enter **your password** every time you launch the game:
-```
-#!/bin/bash
-echo [user password] | sudo -S /bin/false
-sudo [install dir]/csgo_downloadfixer
-```
+You can also prevent the program from writing to CS:GO's memory. This will make the very very very slim (we're talking almost non-existent) chance of getting VAC banned none.
+Just pass `-nowrite` as a CLI argument.
