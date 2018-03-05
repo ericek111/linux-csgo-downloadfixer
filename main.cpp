@@ -166,7 +166,10 @@ int run(int argc, char* argv[]) {
         }
 
         free(requestList);
-        if(nowrite) continue;
+        if(nowrite) {
+            sleep(10);
+            continue;
+        }
 
         // in case we're downloading faster than CSGO's updating the thread
         usleep(200000);
