@@ -29,3 +29,6 @@ To **update**, just run `git pull` and compile again.
 
 You can also prevent the program from writing to CS:GO's memory. This will make the very very very slim (we're talking almost non-existent) chance of getting VAC banned none.
 Just pass `-nowrite` as a CLI argument. However, you'll have to execute `retry` command within 10 seconds after all of the files are downloaded.
+
+The delay is configurable, just make it the second argument. For a delay of 20 seconds:
+`sudo ./csgo_downloadfixer -nowrite 20`

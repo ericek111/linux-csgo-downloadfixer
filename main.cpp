@@ -18,6 +18,7 @@ using namespace std;
 remote::Handle csgo;
 remote::MapModuleMemoryRegion engine;
 bool nowrite = false;
+int afterDelay = 10;
 
 int run(int argc, char* argv[]) {
     if (getuid() != 0) {
@@ -167,7 +168,7 @@ int run(int argc, char* argv[]) {
 
         free(requestList);
         if(nowrite) {
-            sleep(10);
+            sleep(afterDelay);
             continue;
         }
 
@@ -212,7 +213,12 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; i++) {
             if(string(argv[i]) == string("-nowrite")) {
                 nowrite = true;
+                cout << "Disabled memory writes." << endl;
             }
+        }
+        if(argc > 2) {
+            afterDelay = atoi(argv[2]);
+            cout << "Set delay after download to " << afterDelay << " seconds." << endl;
         }
     }
     while (true) {
