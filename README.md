@@ -1,7 +1,7 @@
 # CS:GO Download Fixer
 
 Allows you to download resources (maps, sounds and textures) from community servers without hassle.
-Workaround for [issue #11](https://github.com/ValveSoftware/csgo-osx-linux/issues/11) from September 2014.
+Workaround for [issue #11](https://github.com/ValveSoftware/csgo-osx-linux/issues/11) from September 2014. Just run this once and forget about it. :)
 
 ### How to use:
 #### Dependencies:
