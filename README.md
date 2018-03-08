@@ -28,9 +28,9 @@ sudo ./csgo_downloadfixer
 To **update**, just run `git pull` and compile again.
 
 #### Usage:
-The program accepts a couple of optional arguments:
+The program accepts a couple of optional arguments:  
 `-nowrite [delay]` - described below.  
-`-bz2` - enable BZ2 auto-decompression and don't download already decompressed files - recommended for slower internet connections or when the original files are not present on the server.  
+`-bz2` - enable **BZ2 auto-decompression** and don't download already decompressed files - __recommended__ for slower internet connections or when the original files are not present on the server.  
 
 You can also prevent the program from writing to CS:GO's memory. This will make the very very very slim (we're talking almost non-existent) chance of getting VAC banned none.
 Just pass `-nowrite` as a CLI argument. However, you'll have to execute `retry` command within 10 seconds after all of the files are downloaded.
