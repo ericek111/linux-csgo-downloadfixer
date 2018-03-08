@@ -4,8 +4,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <libgen.h>
+
 #include <curl/curl.h>
 
 #include "remote.hpp"
@@ -13,13 +17,49 @@
 #define DOWNLOADMANAGER_SIGNATURE "\x55\x48\x8D\x3D\x00\x00\x00\x00\x48\x89\xE5\x5D\xE9\xBF\xFF\xFF\xFF"
 #define DOWNLOADMANAGER_MASK "xxxx????xxxxxxxxx"
 
+#define ENABLE_BZ2
+
 using namespace std;
 
 remote::Handle csgo;
 remote::MapModuleMemoryRegion engine;
-bool nowrite = false;
+bool nowrite = false, autobz2 = false;
 int afterDelay = 10;
 
+const char* strdiff(const char* s1, const char* s2) {
+    const char *p1, *p2;
+    for (p1 = s1, p2 = s2; *p1 && *p1 == *p2; p1++, p2++)
+        ;
+    return p1;
+}
+inline bool file_exists(const std::string& name) {
+  struct stat buffer;   
+  return (stat (name.c_str(), &buffer) == 0); 
+}
+// https://stackoverflow.com/a/27172926/3303059
+// I am not satisfied with this "solution" at all!
+static int exec_prog(const char *prog, const char *arg1, const char *arg2) {
+    pid_t   my_pid;
+    int     status, timeout;
+
+    if (0 == (my_pid = fork())) {
+        if (-1 == execlp(prog, prog, arg1, arg2, NULL)) {
+            perror("child process execve failed [%m]");
+            return -1;
+        }
+    }
+    timeout = 20000;
+
+    while (0 == waitpid(my_pid, &status, WNOHANG)) {
+        if ( --timeout < 0 ) {
+            perror("timeout");
+            return -1;
+        }
+        usleep(500);
+    }
+
+    return 0;
+}
 int run(int argc, char* argv[]) {
     if (getuid() != 0) {
         cout << "You should run this as root." << endl;
@@ -35,7 +75,7 @@ int run(int argc, char* argv[]) {
         usleep(1000000);
     }
 
-    cout << endl << "CSGO Process Located [" << csgo.GetPath() << "][" << csgo.GetPid() << "]" << endl << endl;
+    cout << endl << "CSGO Process Located [" << csgo.GetPath() << "][" << csgo.GetPid() << "]" << endl;
 
     engine.start = 0;
 
@@ -62,7 +102,7 @@ int run(int argc, char* argv[]) {
     std::string moddir = csgo.GetPath().substr(0, csgo.GetPath().find_last_of("/\\")) + "/csgo";
 
     unsigned long foundDownloadManagerMov = (long) engine.find(csgo, DOWNLOADMANAGER_SIGNATURE, DOWNLOADMANAGER_MASK) + 1;
-    cout << ">>> found TheDownloadManager mov: 0x" << std::hex << foundDownloadManagerMov << endl << endl;
+    cout << ">>> found TheDownloadManager mov: 0x" << std::hex << foundDownloadManagerMov << endl;
 
     unsigned long downloadManager = csgo.GetAbsoluteAddress((void*)(foundDownloadManagerMov), 3, 7);
     cout << ">>> Address of TheDownloadManager: 0x" << std::hex << downloadManager << endl << endl;
@@ -75,6 +115,7 @@ int run(int argc, char* argv[]) {
     CURL *curl;
     FILE *fp;
     CURLcode res;
+    char curlerr[CURL_ERROR_SIZE];
     curl = curl_easy_init();
     unsigned long responseCode;
     if(!curl) {
@@ -82,6 +123,7 @@ int run(int argc, char* argv[]) {
         exit(1);
     }
 
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, curlerr);
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 1);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30);
@@ -142,12 +184,15 @@ int run(int argc, char* argv[]) {
             std::string saveURL = moddir + "/" + gamePath;
             std::string downloadDir = saveURL.substr(0, saveURL.find_last_of("/\\"));
 
-            cout << "#" << std::dec << i << " / " << " Downloading " << downloadURL << " to " << saveURL << endl;
-            string mkstr = (string("mkdir -p '") + string(downloadDir) + string("'"));
-            const char* mkcmd = mkstr.c_str();
+            if(file_exists(saveURL)) {
+                cout << "#" << std::dec << i << " Skipping " << gamePath << endl;
+                goto SKIPLOOP;
+            }
+
+            cout << "#" << std::dec << i << " Downloading " << downloadURL << endl;// << " to " << saveURL << endl;
 
             // might as well do it the ghetto way - we're on Linux, so this is available
-            system(mkcmd);
+            exec_prog("mkdir", "-p", downloadDir.c_str());
             fp = fopen(saveURL.c_str(), "wb");
             if(fp == NULL) {
                 cout << "Failed to fopen " << saveURL << endl;
@@ -162,8 +207,25 @@ int run(int argc, char* argv[]) {
 
             res = curl_easy_perform(curl);
             fclose(fp);
+
+            if(res) {
+                cout << "Error [" << dec << res << "]: " << curl_easy_strerror(res) << endl;
+                if(strlen(curlerr))
+                    cout << curlerr << endl;
+                goto SKIPLOOP;
+            }
+            if(autobz2) {
+                char *ext = strrchr(gamePathbuf, '.');
+                if(ext && !strcmp(ext, ".bz2")) {
+                    // The file is a BZ2 archive, we can unpack it and just skip the next download.
+                    exec_prog("bzip2", "-dkq", saveURL.c_str());
+                }
+            }
+
+SKIPLOOP:
             if(!nowrite)
                 csgo.Write((void*) (curReq + 8), &httpdone, sizeof(int));
+
         }
 
         free(requestList);
@@ -175,11 +237,11 @@ int run(int argc, char* argv[]) {
         // in case we're downloading faster than CSGO's updating the thread
         usleep(200000);
         csgo.Read((void*) (downloadManager + 2 * 8), &m_queuedRequests_Count, sizeof(unsigned long));
-        cout << m_queuedRequests_Count << endl;
+        // cout << m_queuedRequests_Count << endl;
         for (int i = 0; i < m_queuedRequests_Count + 1; ++i) {
             csgo.Read((void*) (downloadManager + 4 * 8), &m_activeRequest, sizeof(unsigned long));
             csgo.Write((void*) (m_activeRequest + 8), &httperror, sizeof(int));
-            cout << i << endl;
+            // cout << i << endl;
             usleep(50000);
         }
 
@@ -208,17 +270,38 @@ int run(int argc, char* argv[]) {
     return 0;
 }
 
+bool isNumber(char *str) {
+    while(*str) {
+        if(*str < '0' || *str > '9')
+            return false;
+        str++;
+    }
+    return true;
+}
 int main(int argc, char* argv[]) {
     if(argc > 1) {
         for (int i = 1; i < argc; i++) {
-            if(string(argv[i]) == string("-nowrite")) {
+            if(!strcmp(argv[i], "?") || !strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+                cout << "CS:GO Download fixer by ericek111: https://github.com/ericek111/linux-csgo-downloadfixer" << endl;
+                cout << "Syntax: ./csgo_downloadfixer [-nowrite [time]] [-bz2]" << endl;
+                exit(0);
+            } else if(!strcmp(argv[i], "-nowrite")) {
                 nowrite = true;
                 cout << "Disabled memory writes." << endl;
+
+                if(argc > i + 1 && isNumber(argv[i + 1])) {
+                    afterDelay = atoi(argv[2]);
+                    cout << "Set delay after download to " << afterDelay << " seconds." << endl;
+                }
+            } else if(!strcmp(argv[i], "-bz2")) {
+                int ret = system("bzip2 --version > /dev/null 2>&1");
+                if(ret) {
+                    cout << "bzip2 command not available! Install bzip2." << endl;
+                } else {
+                    autobz2 = true;
+                    cout << "Automatically decompressing BZ2 archives." << endl;
+                }
             }
-        }
-        if(argc > 2) {
-            afterDelay = atoi(argv[2]);
-            cout << "Set delay after download to " << afterDelay << " seconds." << endl;
         }
     }
     while (true) {
