@@ -26,12 +26,6 @@ remote::MapModuleMemoryRegion engine;
 bool nowrite = false, autobz2 = false;
 int afterDelay = 10;
 
-const char* strdiff(const char* s1, const char* s2) {
-    const char *p1, *p2;
-    for (p1 = s1, p2 = s2; *p1 && *p1 == *p2; p1++, p2++)
-        ;
-    return p1;
-}
 inline bool file_exists(const std::string& name) {
   struct stat buffer;   
   return (stat (name.c_str(), &buffer) == 0); 
