@@ -23,7 +23,7 @@ using namespace std;
 
 remote::Handle csgo;
 remote::MapModuleMemoryRegion engine;
-bool nowrite = false, autobz2 = false;
+bool nowrite = false, nobz2 = false;
 int afterDelay = 10;
 
 inline bool file_exists(const std::string& name) {
@@ -94,6 +94,8 @@ int run(int argc, char* argv[]) {
 
     // or https://github.com/ericek111/java-csgo-externals/blob/wip/src/me/lixko/csgoexternals/offsets/Offsets.java#L193
     std::string moddir = csgo.GetPath().substr(0, csgo.GetPath().find_last_of("/\\")) + "/csgo";
+    struct stat moddirstat;
+    stat(moddir.c_str(), &moddirstat);
 
     unsigned long foundDownloadManagerMov = (long) engine.find(csgo, DOWNLOADMANAGER_SIGNATURE, DOWNLOADMANAGER_MASK) + 1;
     cout << ">>> found TheDownloadManager mov: 0x" << std::hex << foundDownloadManagerMov << endl;
@@ -123,7 +125,7 @@ int run(int argc, char* argv[]) {
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0);
     curl_easy_setopt(curl, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-    // curl_easy_setopt(curl, CURLOPT_FAILONERROR, true);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, true);
     // Error [22]: HTTP response code said error
     // The requested URL returned error: 404 Not Found
     
@@ -181,6 +183,7 @@ int run(int argc, char* argv[]) {
             std::string gamePath(gamePathbuf);
             std::string downloadURL = baseURL + gamePath;
             std::string saveURL = moddir + "/" + gamePath;
+            std::string gamePathWithBZ2 = gamePath + ".bz2";
             std::string downloadDir = saveURL.substr(0, saveURL.find_last_of("/\\"));
 
             if(file_exists(saveURL)) {
@@ -205,23 +208,31 @@ int run(int argc, char* argv[]) {
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
 
             res = curl_easy_perform(curl);
+            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &responseCode);
             fclose(fp);
 
-            if(res) {
-                cout << "Error [" << dec << res << "]: " << curl_easy_strerror(res) << endl;
+            // HTTP/1.1 200 OK
+            if(responseCode != 200 || res) {
+                cout << "Error [" << dec << res << " / HTTP: " << responseCode << "]: " << curl_easy_strerror(res) << endl;
                 if(strlen(curlerr))
                     cout << curlerr << endl;
+                unlink(saveURL.c_str());
                 goto SKIPLOOP;
             }
-            if(autobz2) {
+            
+            if(!nobz2) {
                 char *ext = strrchr(gamePathbuf, '.');
                 if(ext && !strcmp(ext, ".bz2")) {
                     // The file is a BZ2 archive, we can unpack it and just skip the next download.
-                    exec_prog("bzip2", "-dkq", saveURL.c_str());
+                    exec_prog("bzip2", "-dk", saveURL.c_str());
                 }
             }
 
 SKIPLOOP:
+            if(!res) {
+                chown(saveURL.c_str(), moddirstat.st_uid, moddirstat.st_gid);
+            }
+
             if(!nowrite)
                 csgo.Write((void*) (curReq + 8), &httpdone, sizeof(int));
 
@@ -282,7 +293,7 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i < argc; i++) {
             if(!strcmp(argv[i], "?") || !strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
                 cout << "CS:GO Download fixer by ericek111: https://github.com/ericek111/linux-csgo-downloadfixer" << endl;
-                cout << "Syntax: ./csgo_downloadfixer [-nowrite [time]] [-bz2]" << endl;
+                cout << "Syntax: ./csgo_downloadfixer [-nowrite [time]] [-nobz2]" << endl;
                 exit(0);
             } else if(!strcmp(argv[i], "-nowrite")) {
                 nowrite = true;
@@ -292,14 +303,9 @@ int main(int argc, char* argv[]) {
                     afterDelay = atoi(argv[2]);
                     cout << "Set delay after download to " << afterDelay << " seconds." << endl;
                 }
-            } else if(!strcmp(argv[i], "-bz2")) {
-                int ret = system("bzip2 --version > /dev/null 2>&1");
-                if(ret) {
-                    cout << "bzip2 command not available! Install bzip2." << endl;
-                } else {
-                    autobz2 = true;
-                    cout << "Automatically decompressing BZ2 archives." << endl;
-                }
+            } else if(!strcmp(argv[i], "-nobz2")) {
+                //int ret = system("bzip2 --version > /dev/null 2>&1");
+                nobz2 = false;
             }
         }
     }
